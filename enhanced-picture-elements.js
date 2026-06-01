@@ -1,12 +1,12 @@
 // Enhanced Picture Elements Card for Home Assistant
 // A HACS Lovelace custom card with visual entity positioning,
 // icon color controls, and ambient light circle effects.
-// Version: 1.0.4
+// Version: 1.0.5
 
 (function () {
   'use strict';
 
-  const VERSION = '1.0.4';
+  const VERSION = '1.0.5';
   const CARD_NAME = 'enhanced-picture-elements';
   const EDITOR_NAME = 'enhanced-picture-elements-editor';
 
@@ -537,8 +537,6 @@
       letter-spacing: 0.06em;
       margin-bottom: 10px;
     }
-    ha-entity-picker { display: block; width: 100%; }
-    ha-icon-picker { display: block; width: 100%; }
   `;
 
   // ============================================================
@@ -652,7 +650,7 @@
           <div class="elem ${editCls} ${unavail ? 'unavail' : ''}" data-i="${i}"
             style="left:${el.position?.x ?? 50}%;top:${el.position?.y ?? 50}%;">
             <ha-icon class="eicon" icon="${esc(icon)}"
-              style="--mdc-icon-size:${sz}px;color:${color || 'rgba(255,255,255,0.92)'};"</ha-icon>
+              style="--mdc-icon-size:${sz}px;color:${color || 'rgba(255,255,255,0.92)'};"></ha-icon>
             ${el.show_state && state ? `<div class="estate">${esc(fmtState(state))}</div>` : ''}
             ${el.show_label && el.label ? `<div class="elabel">${esc(el.label)}</div>` : ''}
           </div>`;
@@ -811,8 +809,6 @@
 
     set hass(hass) {
       this._hass = hass;
-      const pickers = this.shadowRoot?.querySelectorAll('ha-entity-picker, ha-icon-picker');
-      pickers?.forEach(p => { p.hass = hass; });
     }
 
     _render() {
@@ -926,6 +922,7 @@
       const autoAmb = !el.ambience_color || el.ambience_color === 'auto';
       const ambColorVal = autoAmb ? '#ffcc66' : (el.ambience_color || '#ffcc66');
       const effectiveIcon = el.icon || getEntityIcon(this._hass, el.entity);
+      const entityIds = Object.keys(this._hass?.states || {}).sort();
 
       return `
         <div class="ppanel">
@@ -933,7 +930,14 @@
 
           <div class="frow">
             <label>Entity</label>
-            <div id="entity-picker-slot"></div>
+            <input type="text" id="pp-entity" value="${esc(el.entity || '')}"
+              placeholder="e.g. light.living_room" list="pp-entity-list" autocomplete="off" />
+            <datalist id="pp-entity-list">
+              ${entityIds.map(id => {
+                const name = this._hass.states[id]?.attributes?.friendly_name || '';
+                return `<option value="${esc(id)}">${esc(name)}</option>`;
+              }).join('')}
+            </datalist>
           </div>
 
           <div class="frow">
@@ -943,7 +947,19 @@
 
           <div class="frow">
             <label>Icon</label>
-            <ha-icon-picker id="pp-icon" value="${esc(effectiveIcon)}"></ha-icon-picker>
+            <input type="text" id="pp-icon" value="${esc(effectiveIcon)}"
+              placeholder="e.g. mdi:lightbulb" list="pp-icon-list" autocomplete="off" />
+            <datalist id="pp-icon-list">
+              <option value="mdi:lightbulb"></option><option value="mdi:toggle-switch"></option>
+              <option value="mdi:thermostat"></option><option value="mdi:fan"></option>
+              <option value="mdi:lock"></option><option value="mdi:window-shutter"></option>
+              <option value="mdi:camera"></option><option value="mdi:cast"></option>
+              <option value="mdi:robot-vacuum"></option><option value="mdi:weather-cloudy"></option>
+              <option value="mdi:account"></option><option value="mdi:home"></option>
+              <option value="mdi:eye"></option><option value="mdi:bell"></option>
+              <option value="mdi:power"></option><option value="mdi:water"></option>
+              <option value="mdi:fire"></option><option value="mdi:car"></option>
+            </datalist>
           </div>
 
           <div class="two-col">
@@ -1163,19 +1179,10 @@
       };
       const setRender = (key, val, sub) => { set(key, val, sub); this._render(); };
 
-      // Entity picker — created programmatically so hass is set before DOM connection
-      const slot = s.querySelector('#entity-picker-slot');
-      if (slot) {
-        const ep = document.createElement('ha-entity-picker');
-        ep.setAttribute('allow-custom-entity', '');
-        ep.label = 'Entity';
-        ep.value = el.entity || '';
-        if (this._hass) ep.hass = this._hass;
-        ep.style.display = 'block';
-        ep.style.width = '100%';
-        slot.appendChild(ep);
-        ep.addEventListener('value-changed', e => {
-          const entityId = e.detail.value;
+      // Entity input — native text input with datalist autocomplete
+      const entityInp = s.querySelector('#pp-entity');
+      if (entityInp) {
+        const applyEntity = (entityId) => {
           el.entity = entityId;
           el.icon = '';
           if (!el.label) {
@@ -1186,28 +1193,29 @@
               if (labelInp) labelInp.value = el.label;
             }
           }
-          // Update preview and entity list icons in-place
           const resolvedIcon = getEntityIcon(this._hass, entityId);
           const pvIcon = this.shadowRoot.querySelector(`.pv-elem[data-pi="${i}"] .pv-icon`);
           if (pvIcon) pvIcon.setAttribute('icon', resolvedIcon);
           const listIcon = this.shadowRoot.querySelector(`.eitem[data-li="${i}"] ha-icon`);
           if (listIcon) listIcon.setAttribute('icon', resolvedIcon);
-          const iconPickerEl = s.querySelector('#pp-icon');
-          if (iconPickerEl) iconPickerEl.value = resolvedIcon;
+          const iconInp = s.querySelector('#pp-icon');
+          if (iconInp && !el.icon) iconInp.value = resolvedIcon;
           this._emit();
+        };
+        entityInp.addEventListener('change', e => applyEntity(e.target.value.trim()));
+        entityInp.addEventListener('input', e => {
+          const v = e.target.value.trim();
+          if (this._hass?.states[v]) applyEntity(v);
         });
       }
 
       s.querySelector('#pp-label')?.addEventListener('change', e => set('label', e.target.value));
 
-      // Icon picker — update preview in-place (no full re-render to avoid destroying entity picker)
-      const iconPicker = s.querySelector('#pp-icon');
-      if (iconPicker) {
-        if (this._hass) iconPicker.hass = this._hass;
-        const initialIconValue = iconPicker.value;
-        iconPicker.addEventListener('value-changed', e => {
-          const newIcon = e.detail.value;
-          if (newIcon === initialIconValue && !el.icon) return; // skip init fire
+      // Icon input — native text input
+      const iconInp = s.querySelector('#pp-icon');
+      if (iconInp) {
+        iconInp.addEventListener('change', e => {
+          const newIcon = e.target.value.trim();
           const storedIcon = newIcon === getEntityIcon(this._hass, el.entity) ? '' : newIcon;
           set('icon', storedIcon);
           const pvIcon = this.shadowRoot.querySelector(`.pv-elem[data-pi="${i}"] .pv-icon`);
