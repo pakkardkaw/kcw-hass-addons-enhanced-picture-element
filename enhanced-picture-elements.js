@@ -1,12 +1,12 @@
 // Enhanced Picture Elements Card for Home Assistant
 // A HACS Lovelace custom card with visual entity positioning,
 // icon color controls, and ambient light circle effects.
-// Version: 1.0.3
+// Version: 1.0.4
 
 (function () {
   'use strict';
 
-  const VERSION = '1.0.3';
+  const VERSION = '1.0.4';
   const CARD_NAME = 'enhanced-picture-elements';
   const EDITOR_NAME = 'enhanced-picture-elements-editor';
 
@@ -652,7 +652,7 @@
           <div class="elem ${editCls} ${unavail ? 'unavail' : ''}" data-i="${i}"
             style="left:${el.position?.x ?? 50}%;top:${el.position?.y ?? 50}%;">
             <ha-icon class="eicon" icon="${esc(icon)}"
-              style="--mdc-icon-size:${sz}px;color:${color || 'rgba(255,255,255,0.92)'};"></ha-icon>
+              style="--mdc-icon-size:${sz}px;color:${color || 'rgba(255,255,255,0.92)'};"</ha-icon>
             ${el.show_state && state ? `<div class="estate">${esc(fmtState(state))}</div>` : ''}
             ${el.show_label && el.label ? `<div class="elabel">${esc(el.label)}</div>` : ''}
           </div>`;
@@ -848,7 +848,7 @@
               ${this._renderPvAmb()}
               ${this._renderPvElems()}
             </div>
-            <div class="preview-tip">Drag icons to reposition • Click an icon to select it</div>
+            <div class="preview-tip">Drag icons to reposition &bull; Click an icon to select it</div>
           </div>
 
           <div>
@@ -933,7 +933,7 @@
 
           <div class="frow">
             <label>Entity</label>
-            <ha-entity-picker id="pp-entity" value="${esc(el.entity || '')}" allow-custom-entity></ha-entity-picker>
+            <div id="entity-picker-slot"></div>
           </div>
 
           <div class="frow">
@@ -1163,10 +1163,17 @@
       };
       const setRender = (key, val, sub) => { set(key, val, sub); this._render(); };
 
-      // Entity picker — auto-fills icon and label from entity state
-      const ep = s.querySelector('#pp-entity');
-      if (ep) {
+      // Entity picker — created programmatically so hass is set before DOM connection
+      const slot = s.querySelector('#entity-picker-slot');
+      if (slot) {
+        const ep = document.createElement('ha-entity-picker');
+        ep.setAttribute('allow-custom-entity', '');
+        ep.label = 'Entity';
+        ep.value = el.entity || '';
         if (this._hass) ep.hass = this._hass;
+        ep.style.display = 'block';
+        ep.style.width = '100%';
+        slot.appendChild(ep);
         ep.addEventListener('value-changed', e => {
           const entityId = e.detail.value;
           el.entity = entityId;
