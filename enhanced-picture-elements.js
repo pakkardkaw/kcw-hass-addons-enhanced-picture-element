@@ -1,12 +1,12 @@
 // Enhanced Picture Elements Card for Home Assistant
 // A HACS Lovelace custom card with visual entity positioning,
 // icon color controls, and ambient light circle effects.
-// Version: 1.0.2
+// Version: 1.0.3
 
 (function () {
   'use strict';
 
-  const VERSION = '1.0.2';
+  const VERSION = '1.0.3';
   const CARD_NAME = 'enhanced-picture-elements';
   const EDITOR_NAME = 'enhanced-picture-elements-editor';
 
