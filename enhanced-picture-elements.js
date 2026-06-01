@@ -652,7 +652,7 @@
           <div class="elem ${editCls} ${unavail ? 'unavail' : ''}" data-i="${i}"
             style="left:${el.position?.x ?? 50}%;top:${el.position?.y ?? 50}%;">
             <ha-icon class="eicon" icon="${esc(icon)}"
-              style="--mdc-icon-size:${sz}px;color:${color || 'rgba(255,255,255,0.92)'};" />
+              style="--mdc-icon-size:${sz}px;color:${color || 'rgba(255,255,255,0.92)'};"></ha-icon>
             ${el.show_state && state ? `<div class="estate">${esc(fmtState(state))}</div>` : ''}
             ${el.show_label && el.label ? `<div class="elabel">${esc(el.label)}</div>` : ''}
           </div>`;
@@ -1170,27 +1170,43 @@
         ep.addEventListener('value-changed', e => {
           const entityId = e.detail.value;
           el.entity = entityId;
-          el.icon = ''; // clear override so entity default is used
+          el.icon = '';
           if (!el.label) {
             const state = this._hass?.states[entityId];
             if (state?.attributes?.friendly_name) {
               el.label = state.attributes.friendly_name;
+              const labelInp = s.querySelector('#pp-label');
+              if (labelInp) labelInp.value = el.label;
             }
           }
+          // Update preview and entity list icons in-place
+          const resolvedIcon = getEntityIcon(this._hass, entityId);
+          const pvIcon = this.shadowRoot.querySelector(`.pv-elem[data-pi="${i}"] .pv-icon`);
+          if (pvIcon) pvIcon.setAttribute('icon', resolvedIcon);
+          const listIcon = this.shadowRoot.querySelector(`.eitem[data-li="${i}"] ha-icon`);
+          if (listIcon) listIcon.setAttribute('icon', resolvedIcon);
+          const iconPickerEl = s.querySelector('#pp-icon');
+          if (iconPickerEl) iconPickerEl.value = resolvedIcon;
           this._emit();
-          this._render();
         });
       }
 
       s.querySelector('#pp-label')?.addEventListener('change', e => set('label', e.target.value));
 
-      // Icon picker — manual override
+      // Icon picker — update preview in-place (no full re-render to avoid destroying entity picker)
       const iconPicker = s.querySelector('#pp-icon');
       if (iconPicker) {
         if (this._hass) iconPicker.hass = this._hass;
+        const initialIconValue = iconPicker.value;
         iconPicker.addEventListener('value-changed', e => {
-          set('icon', e.detail.value);
-          this._render();
+          const newIcon = e.detail.value;
+          if (newIcon === initialIconValue && !el.icon) return; // skip init fire
+          const storedIcon = newIcon === getEntityIcon(this._hass, el.entity) ? '' : newIcon;
+          set('icon', storedIcon);
+          const pvIcon = this.shadowRoot.querySelector(`.pv-elem[data-pi="${i}"] .pv-icon`);
+          if (pvIcon) pvIcon.setAttribute('icon', newIcon);
+          const listIcon = this.shadowRoot.querySelector(`.eitem[data-li="${i}"] ha-icon`);
+          if (listIcon) listIcon.setAttribute('icon', newIcon);
         });
       }
 
