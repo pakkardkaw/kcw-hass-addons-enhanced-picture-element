@@ -1,12 +1,12 @@
 // Enhanced Picture Elements Card for Home Assistant
 // A HACS Lovelace custom card with visual entity positioning,
 // icon color controls, and ambient light circle effects.
-// Version: 1.0.1
+// Version: 1.0.2
 
 (function () {
   'use strict';
 
-  const VERSION = '1.0.1';
+  const VERSION = '1.0.2';
   const CARD_NAME = 'enhanced-picture-elements';
   const EDITOR_NAME = 'enhanced-picture-elements-editor';
 
@@ -78,7 +78,7 @@
     return {
       entity: '',
       label: '',
-      icon: 'mdi:help-circle',
+      icon: '',
       icon_size: 30,
       color_on: '#FFD700',
       color_off: '#888888',
@@ -95,6 +95,32 @@
 
   function clamp(v, lo, hi) {
     return Math.max(lo, Math.min(hi, v));
+  }
+
+  const DOMAIN_ICONS = {
+    light: 'mdi:lightbulb', switch: 'mdi:toggle-switch',
+    sensor: 'mdi:eye', binary_sensor: 'mdi:checkbox-marked-circle',
+    climate: 'mdi:thermostat', cover: 'mdi:window-shutter',
+    fan: 'mdi:fan', media_player: 'mdi:cast', camera: 'mdi:camera',
+    lock: 'mdi:lock', alarm_control_panel: 'mdi:shield-home',
+    automation: 'mdi:robot', script: 'mdi:script-text',
+    scene: 'mdi:palette', input_boolean: 'mdi:toggle-switch',
+    input_number: 'mdi:ray-vertex', input_select: 'mdi:format-list-bulleted',
+    input_text: 'mdi:form-textbox', person: 'mdi:account',
+    device_tracker: 'mdi:cellphone', weather: 'mdi:weather-cloudy',
+    vacuum: 'mdi:robot-vacuum', number: 'mdi:ray-vertex',
+    select: 'mdi:format-list-bulleted', button: 'mdi:gesture-tap-button',
+    timer: 'mdi:timer', counter: 'mdi:counter', sun: 'mdi:white-balance-sunny',
+    update: 'mdi:package-up', humidifier: 'mdi:air-humidifier',
+    water_heater: 'mdi:water-boiler', zone: 'mdi:map-marker-radius',
+  };
+
+  function getEntityIcon(hass, entityId) {
+    if (!entityId) return 'mdi:help-circle';
+    const state = hass?.states[entityId];
+    if (state?.attributes?.icon) return state.attributes.icon;
+    const domain = entityId.split('.')[0];
+    return DOMAIN_ICONS[domain] || 'mdi:help-circle';
   }
 
   // ============================================================
@@ -567,7 +593,6 @@
 
     get editMode() { return this._editMode; }
 
-    // Full re-render
     _render() {
       if (!this._config) return;
       const cfg = this._config;
@@ -605,11 +630,9 @@
         const r = el.ambience_radius || 55;
         const op = el.ambience_opacity || 0.55;
         const rgb = this._hass ? resolveAmbienceRgb(this._hass, el.entity, el.ambience_color) : '255,200,100';
-
         const onStyle = on
           ? `background:radial-gradient(circle,rgba(${rgb},${op}) 0%,rgba(${rgb},${op * 0.35}) 45%,transparent 72%);box-shadow:0 0 ${Math.round(r * 0.65)}px ${Math.round(r * 0.25)}px rgba(${rgb},${op * 0.45});`
           : '';
-
         return `<div class="amb ${on ? 'on' : 'off'}" data-i="${i}" style="left:${el.position?.x ?? 50}%;top:${el.position?.y ?? 50}%;width:${r * 2}px;height:${r * 2}px;${onStyle}"></div>`;
       }).join('');
     }
@@ -619,18 +642,16 @@
         const state = this._hass?.states[el.entity];
         const on = isOn(state);
         const unavail = state?.state === 'unavailable';
-
         let color = el.color || '';
         if (el.color_on && on) color = el.color_on;
         if (el.color_off && !on) color = el.color_off;
-
         const sz = el.icon_size || 30;
         const editCls = this._editMode ? 'editable' : '';
-
+        const icon = el.icon || getEntityIcon(this._hass, el.entity);
         return `
           <div class="elem ${editCls} ${unavail ? 'unavail' : ''}" data-i="${i}"
             style="left:${el.position?.x ?? 50}%;top:${el.position?.y ?? 50}%;">
-            <ha-icon class="eicon" icon="${esc(el.icon || 'mdi:help-circle')}"
+            <ha-icon class="eicon" icon="${esc(icon)}"
               style="--mdc-icon-size:${sz}px;color:${color || 'rgba(255,255,255,0.92)'};"></ha-icon>
             ${el.show_state && state ? `<div class="estate">${esc(fmtState(state))}</div>` : ''}
             ${el.show_label && el.label ? `<div class="elabel">${esc(el.label)}</div>` : ''}
@@ -638,13 +659,9 @@
       }).join('');
     }
 
-    // Light incremental state updates — avoids full re-render on state changes
     _patchStates() {
       if (!this.shadowRoot || !this._config || !this._hass) return;
-
       const elems = this._config.elements || [];
-
-      // Update ambience
       this.shadowRoot.querySelectorAll('.amb').forEach(node => {
         const i = parseInt(node.dataset.i, 10);
         const el = elems[i];
@@ -654,7 +671,6 @@
         const r = el.ambience_radius || 55;
         const op = el.ambience_opacity || 0.55;
         const rgb = resolveAmbienceRgb(this._hass, el.entity, el.ambience_color);
-
         node.className = `amb ${on ? 'on' : 'off'}`;
         if (on) {
           node.style.background = `radial-gradient(circle,rgba(${rgb},${op}) 0%,rgba(${rgb},${op * 0.35}) 45%,transparent 72%)`;
@@ -664,8 +680,6 @@
           node.style.boxShadow = '';
         }
       });
-
-      // Update icons
       this.shadowRoot.querySelectorAll('.elem').forEach(node => {
         const i = parseInt(node.dataset.i, 10);
         const el = elems[i];
@@ -673,15 +687,12 @@
         const state = this._hass.states[el.entity];
         const on = isOn(state);
         const unavail = state?.state === 'unavailable';
-
         let color = el.color || '';
         if (el.color_on && on) color = el.color_on;
         if (el.color_off && !on) color = el.color_off;
-
         node.classList.toggle('unavail', unavail);
         const icon = node.querySelector('.eicon');
         if (icon) icon.style.color = color || 'rgba(255,255,255,0.92)';
-
         const est = node.querySelector('.estate');
         if (est) est.textContent = fmtState(state);
       });
@@ -690,7 +701,6 @@
     _bind() {
       const shadow = this.shadowRoot;
       if (!shadow) return;
-
       shadow.querySelectorAll('.elem').forEach(node => {
         const i = parseInt(node.dataset.i, 10);
         if (this._editMode) {
@@ -699,7 +709,6 @@
           node.addEventListener('click', () => this._tap(i));
         }
       });
-
       shadow.querySelector('#btn-add')?.addEventListener('click', () => {
         this._fire('enhanced-picture-elements-add');
       });
@@ -707,14 +716,12 @@
 
     _makeDraggable(node, i) {
       let origin = null;
-
       const start = (cx, cy) => {
         origin = { cx, cy, moved: false };
         node.style.transition = 'none';
         const amb = this.shadowRoot.querySelector(`.amb[data-i="${i}"]`);
         if (amb) amb.style.transition = 'none';
       };
-
       const move = (cx, cy) => {
         if (!origin) return;
         if (Math.hypot(cx - origin.cx, cy - origin.cy) > 3) origin.moved = true;
@@ -729,7 +736,6 @@
         const amb = this.shadowRoot.querySelector(`.amb[data-i="${i}"]`);
         if (amb) { amb.style.left = `${x}%`; amb.style.top = `${y}%`; }
       };
-
       const end = (cx, cy) => {
         if (!origin) return;
         if (origin.moved) {
@@ -746,7 +752,6 @@
         origin = null;
         node.style.transition = '';
       };
-
       node.addEventListener('pointerdown', e => {
         if (e.button > 0) return;
         e.preventDefault();
@@ -763,7 +768,6 @@
       if (!el?.entity || !this._hass) return;
       const action = el.tap_action || 'toggle';
       const [domain] = el.entity.split('.');
-
       if (action === 'toggle' || action === 'turn_on' || action === 'turn_off') {
         this._hass.callService(domain, action, { entity_id: el.entity });
       } else if (action === 'more-info') {
@@ -791,7 +795,7 @@
       this.attachShadow({ mode: 'open' });
       this._config = null;
       this._hass = null;
-      this._sel = null; // selected element index
+      this._sel = null;
     }
 
     setConfig(config) {
@@ -810,8 +814,6 @@
       const pickers = this.shadowRoot?.querySelectorAll('ha-entity-picker, ha-icon-picker');
       pickers?.forEach(p => { p.hass = hass; });
     }
-
-    // ---- Render -----------------------------------------------
 
     _render() {
       if (!this._config) return;
@@ -871,9 +873,7 @@
         const on = isOn(state);
         const r = el.ambience_radius || 55;
         const op = el.ambience_opacity || 0.55;
-        const rgb = this._hass
-          ? resolveAmbienceRgb(this._hass, el.entity, el.ambience_color)
-          : '255,200,100';
+        const rgb = this._hass ? resolveAmbienceRgb(this._hass, el.entity, el.ambience_color) : '255,200,100';
         const onStyle = on
           ? `background:radial-gradient(circle,rgba(${rgb},${op}) 0%,rgba(${rgb},${op * 0.35}) 45%,transparent 72%);box-shadow:0 0 ${Math.round(r * 0.65)}px ${Math.round(r * 0.25)}px rgba(${rgb},${op * 0.45});`
           : '';
@@ -891,10 +891,11 @@
         if (el.color_off && !on) color = el.color_off;
         const sz = Math.max(20, (el.icon_size || 30) * 0.75);
         const selCls = this._sel === i ? 'selected' : '';
+        const icon = el.icon || getEntityIcon(this._hass, el.entity);
         return `
           <div class="pv-elem ${selCls}" data-pi="${i}"
             style="left:${el.position?.x ?? 50}%;top:${el.position?.y ?? 50}%;">
-            <ha-icon class="pv-icon" icon="${esc(el.icon || 'mdi:help-circle')}"
+            <ha-icon class="pv-icon" icon="${esc(icon)}"
               style="--mdc-icon-size:${sz}px;color:${color || 'rgba(255,255,255,0.92)'};filter:drop-shadow(0 1px 4px rgba(0,0,0,0.7));">
             </ha-icon>
             ${el.show_label && el.label ? `<div class="pv-label">${esc(el.label)}</div>` : ''}
@@ -903,9 +904,11 @@
     }
 
     _renderElist() {
-      return (this._config.elements || []).map((el, i) => `
+      return (this._config.elements || []).map((el, i) => {
+        const icon = el.icon || getEntityIcon(this._hass, el.entity);
+        return `
         <div class="eitem ${this._sel === i ? 'sel' : ''}" data-li="${i}">
-          <ha-icon icon="${esc(el.icon || 'mdi:help-circle')}" style="--mdc-icon-size:20px;flex-shrink:0;"></ha-icon>
+          <ha-icon icon="${esc(icon)}" style="--mdc-icon-size:20px;flex-shrink:0;"></ha-icon>
           <div class="eitem-meta">
             <div class="eitem-name">${esc(el.label || el.entity || 'Unnamed')}</div>
             <div class="eitem-id">${esc(el.entity || 'No entity set')}</div>
@@ -913,15 +916,16 @@
           <button class="del-btn" data-del="${i}" title="Remove">
             <ha-icon icon="mdi:trash-can-outline" style="--mdc-icon-size:17px"></ha-icon>
           </button>
-        </div>`).join('');
+        </div>`;
+      }).join('');
     }
 
     _renderPropPanel() {
       const el = this._config.elements[this._sel];
       if (!el) return '';
-
       const autoAmb = !el.ambience_color || el.ambience_color === 'auto';
       const ambColorVal = autoAmb ? '#ffcc66' : (el.ambience_color || '#ffcc66');
+      const effectiveIcon = el.icon || getEntityIcon(this._hass, el.entity);
 
       return `
         <div class="ppanel">
@@ -939,7 +943,7 @@
 
           <div class="frow">
             <label>Icon</label>
-            <ha-icon-picker id="pp-icon" value="${esc(el.icon || 'mdi:help-circle')}"></ha-icon-picker>
+            <ha-icon-picker id="pp-icon" value="${esc(effectiveIcon)}"></ha-icon-picker>
           </div>
 
           <div class="two-col">
@@ -1014,7 +1018,6 @@
           ${el.ambience ? `
             <div class="amb-box">
               <div class="amb-box-title">Ambience Settings</div>
-
               <div class="frow">
                 <label>Glow Color</label>
                 <div class="color-row">
@@ -1027,7 +1030,6 @@
                   </div>
                 </div>
               </div>
-
               <div class="frow">
                 <label>Glow Radius (px)</label>
                 <div class="range-row">
@@ -1035,7 +1037,6 @@
                   <span class="range-val" id="rv-ambr">${el.ambience_radius || 55}px</span>
                 </div>
               </div>
-
               <div class="frow">
                 <label>Glow Opacity</label>
                 <div class="range-row">
@@ -1047,13 +1048,10 @@
         </div>`;
     }
 
-    // ---- Event binding ----------------------------------------
-
     _bindEditor() {
       const s = this.shadowRoot;
       if (!s) return;
 
-      // Card-level settings
       s.querySelector('#inp-img')?.addEventListener('change', e => {
         this._config.image = e.target.value.trim();
         this._emit();
@@ -1064,7 +1062,6 @@
         this._emit();
       });
 
-      // Entity list: select
       s.querySelectorAll('.eitem[data-li]').forEach(node => {
         node.addEventListener('click', e => {
           if (e.target.closest('.del-btn')) return;
@@ -1074,7 +1071,6 @@
         });
       });
 
-      // Delete
       s.querySelectorAll('.del-btn[data-del]').forEach(btn => {
         btn.addEventListener('click', e => {
           e.stopPropagation();
@@ -1087,7 +1083,6 @@
         });
       });
 
-      // Add
       s.querySelector('#btn-add')?.addEventListener('click', () => {
         this._config.elements.push(defaultElement());
         this._sel = this._config.elements.length - 1;
@@ -1095,12 +1090,10 @@
         this._render();
       });
 
-      // Preview drag
       s.querySelectorAll('.pv-elem[data-pi]').forEach(node => {
         this._bindPreviewDrag(node, parseInt(node.dataset.pi, 10));
       });
 
-      // Prop panel
       if (this._sel !== null) {
         this._bindPropPanel(s);
       }
@@ -1108,31 +1101,26 @@
 
     _bindPreviewDrag(node, i) {
       let orig = null;
-
       node.addEventListener('pointerdown', e => {
         if (e.button > 0) return;
         e.preventDefault();
         node.setPointerCapture(e.pointerId);
         orig = { cx: e.clientX, cy: e.clientY, moved: false };
       });
-
       node.addEventListener('pointermove', e => {
         if (!orig) return;
         if (Math.hypot(e.clientX - orig.cx, e.clientY - orig.cy) > 4) orig.moved = true;
         if (!orig.moved) return;
-
         const preview = this.shadowRoot.querySelector('#preview');
         if (!preview) return;
         const rect = preview.getBoundingClientRect();
         const x = clamp(((e.clientX - rect.left) / rect.width) * 100, 0, 100);
         const y = clamp(((e.clientY - rect.top) / rect.height) * 100, 0, 100);
-
         node.style.left = `${x}%`;
         node.style.top = `${y}%`;
         const amb = this.shadowRoot.querySelector(`.pv-amb[data-pi="${i}"]`);
         if (amb) { amb.style.left = `${x}%`; amb.style.top = `${y}%`; }
       });
-
       node.addEventListener('pointerup', e => {
         if (!orig) return;
         if (orig.moved) {
@@ -1143,7 +1131,6 @@
             const y = Math.round(clamp(((e.clientY - rect.top) / rect.height) * 100, 0, 100) * 10) / 10;
             this._config.elements[i].position = { x, y };
             this._emit();
-            // Update slider readouts if this element is selected
             if (this._sel === i) {
               const xEl = this.shadowRoot.querySelector('#pp-x');
               const yEl = this.shadowRoot.querySelector('#pp-y');
@@ -1156,13 +1143,11 @@
             }
           }
         } else {
-          // select
           this._sel = this._sel === i ? null : i;
           this._render();
         }
         orig = null;
       });
-
       node.addEventListener('pointercancel', () => { orig = null; });
     }
 
@@ -1172,40 +1157,59 @@
       if (!el) return;
 
       const set = (key, val, sub) => {
-        if (sub) {
-          el[sub] = { ...el[sub], [key]: val };
-        } else {
-          el[key] = val;
-        }
+        if (sub) { el[sub] = { ...el[sub], [key]: val }; }
+        else { el[key] = val; }
         this._emit();
       };
+      const setRender = (key, val, sub) => { set(key, val, sub); this._render(); };
 
-      const setRender = (key, val, sub) => {
-        set(key, val, sub);
-        this._render();
-      };
-
-      // Entity picker
+      // Entity picker — auto-fills icon and label from entity state
       const ep = s.querySelector('#pp-entity');
       if (ep) {
         if (this._hass) ep.hass = this._hass;
-        ep.addEventListener('value-changed', e => set('entity', e.detail.value));
-      }
-
-      // Text
-      s.querySelector('#pp-label')?.addEventListener('change', e => set('label', e.target.value));
-
-      // Icon picker
-      const iconPicker = s.querySelector('#pp-icon');
-      if (iconPicker) {
-        if (this._hass) iconPicker.hass = this._hass;
-        iconPicker.addEventListener('value-changed', e => {
-          set('icon', e.detail.value);
-          this._render();
+        ep.addEventListener('value-changed', e => {
+          const entityId = e.detail.value;
+          el.entity = entityId;
+          el.icon = '';
+          if (!el.label) {
+            const state = this._hass?.states[entityId];
+            if (state?.attributes?.friendly_name) {
+              el.label = state.attributes.friendly_name;
+              const labelInp = s.querySelector('#pp-label');
+              if (labelInp) labelInp.value = el.label;
+            }
+          }
+          // Update preview and entity list icons in-place
+          const resolvedIcon = getEntityIcon(this._hass, entityId);
+          const pvIcon = this.shadowRoot.querySelector(`.pv-elem[data-pi="${i}"] .pv-icon`);
+          if (pvIcon) pvIcon.setAttribute('icon', resolvedIcon);
+          const listIcon = this.shadowRoot.querySelector(`.eitem[data-li="${i}"] ha-icon`);
+          if (listIcon) listIcon.setAttribute('icon', resolvedIcon);
+          const iconPickerEl = s.querySelector('#pp-icon');
+          if (iconPickerEl) iconPickerEl.value = resolvedIcon;
+          this._emit();
         });
       }
 
-      // Ranges with live readout
+      s.querySelector('#pp-label')?.addEventListener('change', e => set('label', e.target.value));
+
+      // Icon picker — update preview in-place (no full re-render to avoid destroying entity picker)
+      const iconPicker = s.querySelector('#pp-icon');
+      if (iconPicker) {
+        if (this._hass) iconPicker.hass = this._hass;
+        const initialIconValue = iconPicker.value;
+        iconPicker.addEventListener('value-changed', e => {
+          const newIcon = e.detail.value;
+          if (newIcon === initialIconValue && !el.icon) return; // skip init fire
+          const storedIcon = newIcon === getEntityIcon(this._hass, el.entity) ? '' : newIcon;
+          set('icon', storedIcon);
+          const pvIcon = this.shadowRoot.querySelector(`.pv-elem[data-pi="${i}"] .pv-icon`);
+          if (pvIcon) pvIcon.setAttribute('icon', newIcon);
+          const listIcon = this.shadowRoot.querySelector(`.eitem[data-li="${i}"] ha-icon`);
+          if (listIcon) listIcon.setAttribute('icon', newIcon);
+        });
+      }
+
       const ranges = [
         ['#pp-x',    '#rv-x',    v => `${v}%`,  k => set('x', parseFloat(k), 'position')],
         ['#pp-y',    '#rv-y',    v => `${v}%`,  k => set('y', parseFloat(k), 'position')],
@@ -1221,22 +1225,19 @@
           const rv = s.querySelector(rid);
           if (rv) rv.textContent = fmt(v);
           handler(v);
-          // Mirror position change in preview
           if (id === '#pp-x' || id === '#pp-y') {
             const coord = id === '#pp-x' ? 'left' : 'top';
             const pvNode = this.shadowRoot.querySelector(`.pv-elem[data-pi="${i}"]`);
-            const pvAmb = this.shadowRoot.querySelector(`.pv-amb[data-pi="${i}"]`);
+            const pvAmb  = this.shadowRoot.querySelector(`.pv-amb[data-pi="${i}"]`);
             if (pvNode) pvNode.style[coord] = `${v}%`;
-            if (pvAmb) pvAmb.style[coord] = `${v}%`;
+            if (pvAmb)  pvAmb.style[coord]  = `${v}%`;
           }
         });
       });
 
-      // Colors
       s.querySelector('#pp-con') ?.addEventListener('input', e => set('color_on',  e.target.value));
       s.querySelector('#pp-coff')?.addEventListener('input', e => set('color_off', e.target.value));
 
-      // Ambience color + auto
       const ambColPicker = s.querySelector('#pp-ambcol');
       const ambAutoChk   = s.querySelector('#pp-ambcol-auto');
       ambColPicker?.addEventListener('input', e => {
@@ -1252,14 +1253,9 @@
         }
       });
 
-      // Checkboxes
       s.querySelector('#pp-showstate')?.addEventListener('change', e => set('show_state', e.target.checked));
       s.querySelector('#pp-showlabel')?.addEventListener('change', e => set('show_label', e.target.checked));
-
-      // Ambience toggle — needs re-render to show/hide settings section
       s.querySelector('#pp-amb')?.addEventListener('change', e => setRender('ambience', e.target.checked));
-
-      // Tap action
       s.querySelector('#pp-tap')?.addEventListener('change', e => set('tap_action', e.target.value));
     }
 
