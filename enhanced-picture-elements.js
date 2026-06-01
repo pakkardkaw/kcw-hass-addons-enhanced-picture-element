@@ -512,6 +512,7 @@
       margin-bottom: 10px;
     }
     ha-entity-picker { display: block; width: 100%; }
+    ha-icon-picker { display: block; width: 100%; }
   `;
 
   // ============================================================
@@ -806,7 +807,7 @@
 
     set hass(hass) {
       this._hass = hass;
-      const pickers = this.shadowRoot?.querySelectorAll('ha-entity-picker');
+      const pickers = this.shadowRoot?.querySelectorAll('ha-entity-picker, ha-icon-picker');
       pickers?.forEach(p => { p.hass = hass; });
     }
 
@@ -837,7 +838,7 @@
           </div>
 
           <div>
-            <div class="sh">Visual Preview & Positioning</div>
+            <div class="sh">Visual Preview &amp; Positioning</div>
             <div class="preview-wrap" id="preview">
               ${this._config.image
                 ? `<img src="${esc(this._config.image)}" alt="" />`
@@ -937,8 +938,8 @@
           </div>
 
           <div class="frow">
-            <label>MDI Icon</label>
-            <input type="text" id="pp-icon" value="${esc(el.icon || 'mdi:help-circle')}" placeholder="mdi:lightbulb" />
+            <label>Icon</label>
+            <ha-icon-picker id="pp-icon" value="${esc(el.icon || 'mdi:help-circle')}"></ha-icon-picker>
           </div>
 
           <div class="two-col">
@@ -1007,7 +1008,7 @@
 
           <div class="check-row">
             <input type="checkbox" id="pp-amb" ${el.ambience ? 'checked' : ''} />
-            <label for="pp-amb"><strong>Ambience Light Circle</strong> — glowing halo around this entity</label>
+            <label for="pp-amb"><strong>Ambience Light Circle</strong> &mdash; glowing halo around this entity</label>
           </div>
 
           ${el.ambience ? `
@@ -1097,11 +1098,6 @@
       // Preview drag
       s.querySelectorAll('.pv-elem[data-pi]').forEach(node => {
         this._bindPreviewDrag(node, parseInt(node.dataset.pi, 10));
-      });
-
-      // Preview click (select)
-      s.querySelectorAll('.pv-elem[data-pi]').forEach(node => {
-        // drag handler sets _pv_moved; click fires if not moved
       });
 
       // Prop panel
@@ -1198,10 +1194,16 @@
 
       // Text
       s.querySelector('#pp-label')?.addEventListener('change', e => set('label', e.target.value));
-      s.querySelector('#pp-icon')?.addEventListener('change', e => {
-        set('icon', e.target.value);
-        this._render();
-      });
+
+      // Icon picker
+      const iconPicker = s.querySelector('#pp-icon');
+      if (iconPicker) {
+        if (this._hass) iconPicker.hass = this._hass;
+        iconPicker.addEventListener('value-changed', e => {
+          set('icon', e.detail.value);
+          this._render();
+        });
+      }
 
       // Ranges with live readout
       const ranges = [
