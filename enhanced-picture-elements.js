@@ -1,12 +1,12 @@
 // Enhanced Picture Elements Card for Home Assistant
 // A HACS Lovelace custom card with visual entity positioning,
 // icon color controls, and ambient light circle effects.
-// Version: 1.0.2
+// Version: 1.0.6
 
 (function () {
   'use strict';
 
-  const VERSION = '1.0.2';
+  const VERSION = '1.0.6';
   const CARD_NAME = 'enhanced-picture-elements';
   const EDITOR_NAME = 'enhanced-picture-elements-editor';
 
@@ -537,8 +537,28 @@
       letter-spacing: 0.06em;
       margin-bottom: 10px;
     }
-    ha-entity-picker { display: block; width: 100%; }
-    ha-icon-picker { display: block; width: 100%; }
+    /* ---- Pagination ---- */
+    .pagination {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      margin-top: 8px;
+    }
+    .page-btn {
+      background: var(--secondary-background-color, rgba(0,0,0,0.06));
+      border: 1px solid var(--divider-color, rgba(0,0,0,0.12));
+      border-radius: 6px;
+      color: var(--primary-text-color);
+      font-size: 1.1em;
+      line-height: 1;
+      padding: 4px 14px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .page-btn:hover:not(:disabled) { background: rgba(var(--rgb-primary-color,33,150,243),0.1); }
+    .page-btn:disabled { opacity: 0.35; cursor: default; }
+    .page-info { font-size: 0.78em; color: var(--secondary-text-color); min-width: 50px; text-align: center; }
   `;
 
   // ============================================================
@@ -652,7 +672,8 @@
           <div class="elem ${editCls} ${unavail ? 'unavail' : ''}" data-i="${i}"
             style="left:${el.position?.x ?? 50}%;top:${el.position?.y ?? 50}%;">
             <ha-icon class="eicon" icon="${esc(icon)}"
-              style="--mdc-icon-size:${sz}px;color:${color || 'rgba(255,255,255,0.92)'};"></ha-icon>
+              style="--mdc-icon-size:${sz}px;color:${color || 'rgba(255,255,255,0.92)'};">
+            </ha-icon>
             ${el.show_state && state ? `<div class="estate">${esc(fmtState(state))}</div>` : ''}
             ${el.show_label && el.label ? `<div class="elabel">${esc(el.label)}</div>` : ''}
           </div>`;
@@ -796,6 +817,7 @@
       this._config = null;
       this._hass = null;
       this._sel = null;
+      this._page = 0;
     }
 
     setConfig(config) {
@@ -811,8 +833,6 @@
 
     set hass(hass) {
       this._hass = hass;
-      const pickers = this.shadowRoot?.querySelectorAll('ha-entity-picker, ha-icon-picker');
-      pickers?.forEach(p => { p.hass = hass; });
     }
 
     _render() {
@@ -848,7 +868,7 @@
               ${this._renderPvAmb()}
               ${this._renderPvElems()}
             </div>
-            <div class="preview-tip">Drag icons to reposition • Click an icon to select it</div>
+            <div class="preview-tip">Drag icons to reposition &bull; Click an icon to select it</div>
           </div>
 
           <div>
@@ -904,7 +924,15 @@
     }
 
     _renderElist() {
-      return (this._config.elements || []).map((el, i) => {
+      const elements = this._config.elements || [];
+      const perPage = 10;
+      const totalPages = Math.max(1, Math.ceil(elements.length / perPage));
+      const page = Math.min(this._page, totalPages - 1);
+      const start = page * perPage;
+      const pageItems = elements.slice(start, start + perPage);
+
+      const listHtml = pageItems.map((el, localIdx) => {
+        const i = start + localIdx;
         const icon = el.icon || getEntityIcon(this._hass, el.entity);
         return `
         <div class="eitem ${this._sel === i ? 'sel' : ''}" data-li="${i}">
@@ -918,6 +946,15 @@
           </button>
         </div>`;
       }).join('');
+
+      const paginationHtml = totalPages > 1 ? `
+        <div class="pagination">
+          <button class="page-btn" id="btn-prev-page" ${page === 0 ? 'disabled' : ''}>&#8249;</button>
+          <span class="page-info">${page + 1} / ${totalPages}</span>
+          <button class="page-btn" id="btn-next-page" ${page >= totalPages - 1 ? 'disabled' : ''}>&#8250;</button>
+        </div>` : '';
+
+      return listHtml + paginationHtml;
     }
 
     _renderPropPanel() {
@@ -926,14 +963,32 @@
       const autoAmb = !el.ambience_color || el.ambience_color === 'auto';
       const ambColorVal = autoAmb ? '#ffcc66' : (el.ambience_color || '#ffcc66');
       const effectiveIcon = el.icon || getEntityIcon(this._hass, el.entity);
+      const allStates = this._hass?.states || {};
+      const domains = [...new Set(Object.keys(allStates).map(id => id.split('.')[0]))].sort();
+      const currentDomain = el.entity ? el.entity.split('.')[0] : (domains[0] || '');
+      const filteredIds = Object.keys(allStates).filter(id => !currentDomain || id.startsWith(currentDomain + '.')).sort();
 
       return `
         <div class="ppanel">
           <div class="ppanel-title">Configure Entity</div>
 
           <div class="frow">
+            <label>Domain</label>
+            <select id="pp-domain">
+              ${domains.map(d => `<option value="${esc(d)}" ${d === currentDomain ? 'selected' : ''}>${esc(d)}</option>`).join('')}
+            </select>
+          </div>
+
+          <div class="frow">
             <label>Entity</label>
-            <ha-entity-picker id="pp-entity" value="${esc(el.entity || '')}" allow-custom-entity></ha-entity-picker>
+            <input type="text" id="pp-entity" value="${esc(el.entity || '')}"
+              placeholder="Select a domain first, then type…" list="pp-entity-list" autocomplete="off" />
+            <datalist id="pp-entity-list">
+              ${filteredIds.map(id => {
+                const name = allStates[id]?.attributes?.friendly_name || '';
+                return `<option value="${esc(id)}">${esc(name)}</option>`;
+              }).join('')}
+            </datalist>
           </div>
 
           <div class="frow">
@@ -943,7 +998,19 @@
 
           <div class="frow">
             <label>Icon</label>
-            <ha-icon-picker id="pp-icon" value="${esc(effectiveIcon)}"></ha-icon-picker>
+            <input type="text" id="pp-icon" value="${esc(effectiveIcon)}"
+              placeholder="e.g. mdi:lightbulb" list="pp-icon-list" autocomplete="off" />
+            <datalist id="pp-icon-list">
+              <option value="mdi:lightbulb"></option><option value="mdi:toggle-switch"></option>
+              <option value="mdi:thermostat"></option><option value="mdi:fan"></option>
+              <option value="mdi:lock"></option><option value="mdi:window-shutter"></option>
+              <option value="mdi:camera"></option><option value="mdi:cast"></option>
+              <option value="mdi:robot-vacuum"></option><option value="mdi:weather-cloudy"></option>
+              <option value="mdi:account"></option><option value="mdi:home"></option>
+              <option value="mdi:eye"></option><option value="mdi:bell"></option>
+              <option value="mdi:power"></option><option value="mdi:water"></option>
+              <option value="mdi:fire"></option><option value="mdi:car"></option>
+            </datalist>
           </div>
 
           <div class="two-col">
@@ -1078,6 +1145,9 @@
           this._config.elements.splice(i, 1);
           if (this._sel === i) this._sel = null;
           else if (this._sel > i) this._sel--;
+          // clamp page to valid range after deletion
+          const maxPage = Math.max(0, Math.ceil(this._config.elements.length / 10) - 1);
+          this._page = Math.min(this._page, maxPage);
           this._emit();
           this._render();
         });
@@ -1086,7 +1156,19 @@
       s.querySelector('#btn-add')?.addEventListener('click', () => {
         this._config.elements.push(defaultElement());
         this._sel = this._config.elements.length - 1;
+        // navigate to the page that contains the new entity
+        this._page = Math.floor(this._sel / 10);
         this._emit();
+        this._render();
+      });
+
+      s.querySelector('#btn-prev-page')?.addEventListener('click', () => {
+        this._page = Math.max(0, this._page - 1);
+        this._render();
+      });
+      s.querySelector('#btn-next-page')?.addEventListener('click', () => {
+        const maxPage = Math.max(0, Math.ceil(this._config.elements.length / 10) - 1);
+        this._page = Math.min(maxPage, this._page + 1);
         this._render();
       });
 
@@ -1163,12 +1245,29 @@
       };
       const setRender = (key, val, sub) => { set(key, val, sub); this._render(); };
 
-      // Entity picker — auto-fills icon and label from entity state
-      const ep = s.querySelector('#pp-entity');
-      if (ep) {
-        if (this._hass) ep.hass = this._hass;
-        ep.addEventListener('value-changed', e => {
-          const entityId = e.detail.value;
+      // Domain select — filters the entity datalist without re-rendering
+      const domainSel = s.querySelector('#pp-domain');
+      if (domainSel) {
+        domainSel.addEventListener('change', e => {
+          const domain = e.target.value;
+          const datalist = s.querySelector('#pp-entity-list');
+          if (!datalist) return;
+          const filtered = Object.keys(this._hass?.states || {})
+            .filter(id => !domain || id.startsWith(domain + '.'))
+            .sort();
+          datalist.innerHTML = filtered.map(id => {
+            const name = this._hass?.states[id]?.attributes?.friendly_name || '';
+            return `<option value="${esc(id)}">${esc(name)}</option>`;
+          }).join('');
+          const entityInput = s.querySelector('#pp-entity');
+          if (entityInput) { entityInput.value = ''; entityInput.focus(); }
+        });
+      }
+
+      // Entity input — native text input with datalist autocomplete
+      const entityInp = s.querySelector('#pp-entity');
+      if (entityInp) {
+        const applyEntity = (entityId) => {
           el.entity = entityId;
           el.icon = '';
           if (!el.label) {
@@ -1179,28 +1278,29 @@
               if (labelInp) labelInp.value = el.label;
             }
           }
-          // Update preview and entity list icons in-place
           const resolvedIcon = getEntityIcon(this._hass, entityId);
           const pvIcon = this.shadowRoot.querySelector(`.pv-elem[data-pi="${i}"] .pv-icon`);
           if (pvIcon) pvIcon.setAttribute('icon', resolvedIcon);
           const listIcon = this.shadowRoot.querySelector(`.eitem[data-li="${i}"] ha-icon`);
           if (listIcon) listIcon.setAttribute('icon', resolvedIcon);
-          const iconPickerEl = s.querySelector('#pp-icon');
-          if (iconPickerEl) iconPickerEl.value = resolvedIcon;
+          const iconInp = s.querySelector('#pp-icon');
+          if (iconInp && !el.icon) iconInp.value = resolvedIcon;
           this._emit();
+        };
+        entityInp.addEventListener('change', e => applyEntity(e.target.value.trim()));
+        entityInp.addEventListener('input', e => {
+          const v = e.target.value.trim();
+          if (this._hass?.states[v]) applyEntity(v);
         });
       }
 
       s.querySelector('#pp-label')?.addEventListener('change', e => set('label', e.target.value));
 
-      // Icon picker — update preview in-place (no full re-render to avoid destroying entity picker)
-      const iconPicker = s.querySelector('#pp-icon');
-      if (iconPicker) {
-        if (this._hass) iconPicker.hass = this._hass;
-        const initialIconValue = iconPicker.value;
-        iconPicker.addEventListener('value-changed', e => {
-          const newIcon = e.detail.value;
-          if (newIcon === initialIconValue && !el.icon) return; // skip init fire
+      // Icon input — native text input
+      const iconInp = s.querySelector('#pp-icon');
+      if (iconInp) {
+        iconInp.addEventListener('change', e => {
+          const newIcon = e.target.value.trim();
           const storedIcon = newIcon === getEntityIcon(this._hass, el.entity) ? '' : newIcon;
           set('icon', storedIcon);
           const pvIcon = this.shadowRoot.querySelector(`.pv-elem[data-pi="${i}"] .pv-icon`);
