@@ -1,12 +1,12 @@
 // Enhanced Picture Elements Card for Home Assistant
 // A HACS Lovelace custom card with visual entity positioning,
 // icon color controls, and ambient light circle effects.
-// Version: 1.0.6
+// Version: 1.0.7
 
 (function () {
   'use strict';
 
-  const VERSION = '1.0.6';
+  const VERSION = '1.0.7';
   const CARD_NAME = 'enhanced-picture-elements';
   const EDITOR_NAME = 'enhanced-picture-elements-editor';
 
@@ -672,8 +672,7 @@
           <div class="elem ${editCls} ${unavail ? 'unavail' : ''}" data-i="${i}"
             style="left:${el.position?.x ?? 50}%;top:${el.position?.y ?? 50}%;">
             <ha-icon class="eicon" icon="${esc(icon)}"
-              style="--mdc-icon-size:${sz}px;color:${color || 'rgba(255,255,255,0.92)'};">
-            </ha-icon>
+              style="--mdc-icon-size:${sz}px;color:${color || 'rgba(255,255,255,0.92)'};"></ha-icon>
             ${el.show_state && state ? `<div class="estate">${esc(fmtState(state))}</div>` : ''}
             ${el.show_label && el.label ? `<div class="elabel">${esc(el.label)}</div>` : ''}
           </div>`;
@@ -788,9 +787,8 @@
       const el = this._config.elements[i];
       if (!el?.entity || !this._hass) return;
       const action = el.tap_action || 'toggle';
-      const [domain] = el.entity.split('.');
       if (action === 'toggle' || action === 'turn_on' || action === 'turn_off') {
-        this._hass.callService(domain, action, { entity_id: el.entity });
+        this._hass.callService('homeassistant', action, { entity_id: el.entity });
       } else if (action === 'more-info') {
         this._fire('hass-more-info', { entityId: el.entity });
       } else if (action === 'navigate' && el.navigate_to) {
@@ -1013,6 +1011,17 @@
             </datalist>
           </div>
 
+          <div class="frow">
+            <label>Tap Action</label>
+            <select id="pp-tap">
+              <option value="toggle"   ${(el.tap_action||'toggle')==='toggle'   ?'selected':''}>Toggle</option>
+              <option value="turn_on"  ${el.tap_action==='turn_on'              ?'selected':''}>Turn On</option>
+              <option value="turn_off" ${el.tap_action==='turn_off'             ?'selected':''}>Turn Off</option>
+              <option value="more-info"${el.tap_action==='more-info'            ?'selected':''}>More Info popup</option>
+              <option value="none"     ${el.tap_action==='none'                 ?'selected':''}>None</option>
+            </select>
+          </div>
+
           <div class="two-col">
             <div class="frow">
               <label>X Position (%)</label>
@@ -1062,17 +1071,6 @@
           <div class="check-row">
             <input type="checkbox" id="pp-showlabel" ${el.show_label ? 'checked' : ''} />
             <label for="pp-showlabel">Show label under icon</label>
-          </div>
-
-          <div class="frow">
-            <label>Tap Action</label>
-            <select id="pp-tap">
-              <option value="toggle"   ${(el.tap_action||'toggle')==='toggle'   ?'selected':''}>Toggle</option>
-              <option value="turn_on"  ${el.tap_action==='turn_on'              ?'selected':''}>Turn On</option>
-              <option value="turn_off" ${el.tap_action==='turn_off'             ?'selected':''}>Turn Off</option>
-              <option value="more-info"${el.tap_action==='more-info'            ?'selected':''}>More Info popup</option>
-              <option value="none"     ${el.tap_action==='none'                 ?'selected':''}>None</option>
-            </select>
           </div>
 
           <hr class="div" />
